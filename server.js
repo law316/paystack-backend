@@ -21,6 +21,14 @@ app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
 
+// Optional: Add POST / for debugging
+app.post("/", (req, res) => {
+  res.status(200).json({
+    status: true,
+    message: "POST request to / is working!",
+  });
+});
+
 // ======================
 // Create Access Code Endpoint
 // ======================

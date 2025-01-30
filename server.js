@@ -26,13 +26,31 @@ app.get("/", (req, res) => {
 // Create Access Code Endpoint
 // ======================
 app.post("/create-access-code", async (req, res) => {
+  const { email, amount } = req.body;
+
+  // Validate email and amount
+  if (!email || !amount) {
+    return res.status(400).json({
+      status: false,
+      message: "Email and amount are required.",
+    });
+  }
+
+  if (typeof amount !== "number" || amount <= 0) {
+    return res.status(400).json({
+      status: false,
+      message: "Amount must be a positive number.",
+    });
+  }
+
   try {
-    const { email, amount } = req.body;
+    // Convert amount to kobo if it's not already in kobo
+    const amountInKobo = amount * 100;
 
     // Make a request to Paystack to initialize a transaction
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
-      { email, amount }, // `amount` is in kobo (e.g., ₦100 = 10000 kobo)
+      { email, amount: amountInKobo }, // `amount` in kobo
       {
         headers: {
           Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
@@ -47,7 +65,7 @@ app.post("/create-access-code", async (req, res) => {
       reference: response.data.data.reference,
     });
   } catch (error) {
-    console.error("Error creating access code:", error.message);
+    console.error("Error creating access code:", error.response?.data || error.message);
     res.status(500).json({
       status: false,
       message: "Failed to create access code",
@@ -59,9 +77,17 @@ app.post("/create-access-code", async (req, res) => {
 // Verify Transaction Endpoint
 // ======================
 app.post("/verify-transaction", async (req, res) => {
-  try {
-    const { reference } = req.body;
+  const { reference } = req.body;
 
+  // Validate reference
+  if (!reference) {
+    return res.status(400).json({
+      status: false,
+      message: "Transaction reference is required.",
+    });
+  }
+
+  try {
     // Make a request to Paystack to verify the transaction
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
@@ -86,7 +112,7 @@ app.post("/verify-transaction", async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("Error verifying transaction:", error.message);
+    console.error("Error verifying transaction:", error.response?.data || error.message);
     res.status(500).json({
       status: false,
       message: "Failed to verify transaction",

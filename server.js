@@ -1,18 +1,26 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const cors = require("cors");
 const axios = require("axios");
-require("dotenv").config(); // For environment variables like your Paystack secret key
+require("dotenv").config(); // Load environment variables from .env file
 
+// Initialize Express app
 const app = express();
+
+// Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors()); // Allow cross-origin requests
 
-// Allow cross-origin requests (important if your frontend or app is hosted elsewhere)
-const cors = require("cors");
-app.use(cors());
-
-// Paystack secret key (loaded from .env file)
+// Paystack secret key from environment variables
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+
+// ======================
+// Root Route
+// ======================
+app.get("/", (req, res) => {
+  res.send("Backend is running!");
+});
 
 // ======================
 // Create Access Code Endpoint
@@ -21,10 +29,10 @@ app.post("/create-access-code", async (req, res) => {
   try {
     const { email, amount } = req.body;
 
-    // Request Paystack to create a transaction and generate an access code
+    // Make a request to Paystack to initialize a transaction
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
-      { email, amount }, // Amount is in kobo (e.g., ₦100 = 10000 kobo)
+      { email, amount }, // `amount` is in kobo (e.g., ₦100 = 10000 kobo)
       {
         headers: {
           Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
@@ -32,10 +40,11 @@ app.post("/create-access-code", async (req, res) => {
       }
     );
 
-    // Respond with the access code
+    // Respond back with the access code and reference
     res.status(200).json({
       status: true,
       access_code: response.data.data.access_code,
+      reference: response.data.data.reference,
     });
   } catch (error) {
     console.error("Error creating access code:", error.message);
@@ -53,7 +62,7 @@ app.post("/verify-transaction", async (req, res) => {
   try {
     const { reference } = req.body;
 
-    // Request Paystack to verify the transaction
+    // Make a request to Paystack to verify the transaction
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -63,7 +72,7 @@ app.post("/verify-transaction", async (req, res) => {
       }
     );
 
-    // Check transaction status
+    // Check the transaction status
     if (response.data.data.status === "success") {
       res.status(200).json({
         status: true,
@@ -88,7 +97,7 @@ app.post("/verify-transaction", async (req, res) => {
 // ======================
 // Start the Server
 // ======================
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000; // Default port is 10000 (required by Render)
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

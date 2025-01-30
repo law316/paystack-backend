@@ -1,5 +1,4 @@
 const express = require("express");
-const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 require("dotenv").config(); // Load environment variables from .env file
@@ -8,9 +7,9 @@ require("dotenv").config(); // Load environment variables from .env file
 const app = express();
 
 // Middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(cors()); // Allow cross-origin requests
+app.use(express.json()); // Parse JSON request body
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request body
+app.use(cors()); // Enable cross-origin requests
 
 // Paystack secret key from environment variables
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
@@ -44,7 +43,7 @@ app.post("/create-access-code", async (req, res) => {
   }
 
   try {
-    // Convert amount to kobo if it's not already in kobo
+    // Convert amount to kobo
     const amountInKobo = amount * 100;
 
     // Make a request to Paystack to initialize a transaction
@@ -65,7 +64,9 @@ app.post("/create-access-code", async (req, res) => {
       reference: response.data.data.reference,
     });
   } catch (error) {
+    // Log the detailed error for debugging
     console.error("Error creating access code:", error.response?.data || error.message);
+
     res.status(500).json({
       status: false,
       message: "Failed to create access code",
@@ -112,7 +113,9 @@ app.post("/verify-transaction", async (req, res) => {
       });
     }
   } catch (error) {
+    // Log the detailed error for debugging
     console.error("Error verifying transaction:", error.response?.data || error.message);
+
     res.status(500).json({
       status: false,
       message: "Failed to verify transaction",

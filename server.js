@@ -82,7 +82,7 @@ app.post("/create-access-code", async (req, res) => {
 app.post("/verify-transaction", async (req, res) => {
   const { reference } = req.body;
 
-  // Validate reference
+  // Check if the reference is provided
   if (!reference) {
     return res.status(400).json({
       status: false,
@@ -96,31 +96,30 @@ app.post("/verify-transaction", async (req, res) => {
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, // Ensure you have the correct secret key in your .env file
         },
       }
     );
 
-    // Check the transaction status
     if (response.data.data.status === "success") {
-      res.status(200).json({
+      // Transaction was successful
+      return res.status(200).json({
         status: true,
         message: "Transaction verified successfully",
-        data: response.data.data,
+        data: response.data.data, // Include transaction details
       });
     } else {
-      res.status(400).json({
+      // Transaction failed or is pending
+      return res.status(400).json({
         status: false,
         message: "Transaction verification failed",
       });
     }
   } catch (error) {
-    // Log the detailed error for debugging
     console.error("Error verifying transaction:", error.response?.data || error.message);
-
-    res.status(500).json({
+    return res.status(500).json({
       status: false,
-      message: "Failed to verify transaction",
+      message: "An error occurred during transaction verification.",
     });
   }
 });

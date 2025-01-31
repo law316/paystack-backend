@@ -21,18 +21,12 @@ app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
 
-// Optional: Add POST / for debugging
-app.post("/", (req, res) => {
-  res.status(200).json({
-    status: true,
-    message: "POST request to / is working!",
-  });
-});
-
 // ======================
 // Create Access Code Endpoint
 // ======================
 app.post("/create-access-code", async (req, res) => {
+  console.log("Request Body:", req.body); // Log the request body
+
   const { email, amount } = req.body;
 
   // Validate email and amount

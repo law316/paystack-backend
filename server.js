@@ -107,16 +107,15 @@ app.post("/create-access-code", async (req, res) => {
 });
 
 app.post("/verify-transaction", async (req, res) => {
-  try {
-    const { reference } = req.body;
-
-    // Validate only reference exists
-    if (!reference) {
-      return res.status(400).json({
-        status: false,
-        message: "Transaction reference is required.",
-      });
-    }
+  // This endpoint needs ONLY reference validation
+  const { reference } = req.body;  // <- ONLY reference needed here
+  
+  if (!reference) {  // <-- Validate ONLY reference
+    return res.status(400).json({
+      status: false,
+      message: "Transaction reference required."
+    });
+  }
 
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,

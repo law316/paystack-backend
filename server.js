@@ -109,11 +109,12 @@ app.post("/create-access-code", async (req, res) => {
 app.post("/verify-transaction", async (req, res) => {
   try {
     const { reference } = req.body;
-    
+
+    // Validate only reference exists
     if (!reference) {
       return res.status(400).json({
         status: false,
-        message: "Transaction reference required.",
+        message: "Transaction reference is required.",
       });
     }
 
@@ -129,20 +130,22 @@ app.post("/verify-transaction", async (req, res) => {
     if (response.data.data.status === "success") {
       return res.status(200).json({
         status: true,
-        message: "Payment verified",
+        message: "Transaction verified successfully",
         data: response.data.data,
       });
     }
 
-    res.status(400).json({
+    return res.status(400).json({
       status: false,
-      message: "Payment verification failed",
+      message: "Transaction verification failed",
     });
+
   } catch (error) {
-    console.error("Verify transaction error:", error.response?.data || error.message);
-    res.status(500).json({
+    console.error("Verification error:", error.response?.data || error.message);
+    return res.status(500).json({
       status: false,
       message: "Error verifying transaction",
+      error: error.message
     });
   }
 });

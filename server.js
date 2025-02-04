@@ -11,7 +11,6 @@ const app = express();
 // ======================
 // Security Middleware
 // ======================
-// Webhook needs raw body for signature validation
 app.use(
   "/webhook",
   express.raw({ type: "application/json" }),
@@ -21,12 +20,10 @@ app.use(
   }
 );
 
-// Regular middleware for other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-// Rate limiting (100 requests/15min)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -51,7 +48,7 @@ const sanitizeEmail = (email) => {
 };
 
 const updateUserSubscription = async (reference) => {
-  // Implement your Firebase/Database update logic here
+  // Implement Firebase/Database update here
   console.log(`Updating subscription for reference: ${reference}`);
 };
 
@@ -97,25 +94,26 @@ app.post("/create-access-code", async (req, res) => {
       access_code: response.data.data.access_code,
       reference: response.data.data.reference,
     });
+
   } catch (error) {
-    console.error("Create access code error:", error.response?.data || error.message);
+    console.error("Create error:", error.response?.data || error.message);
     res.status(500).json({
       status: false,
-      message: "Failed to create access code",
+      message: "Payment initiation failed",
     });
   }
 });
 
 app.post("/verify-transaction", async (req, res) => {
-  // This endpoint needs ONLY reference validation
-  const { reference } = req.body;  // <- ONLY reference needed here
-  
-  if (!reference) {  // <-- Validate ONLY reference
-    return res.status(400).json({
-      status: false,
-      message: "Transaction reference required."
-    });
-  }
+  try {
+    const { reference } = req.body;
+
+    if (!reference) {
+      return res.status(400).json({
+        status: false,
+        message: "Transaction reference required.",
+      });
+    }
 
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
@@ -129,21 +127,21 @@ app.post("/verify-transaction", async (req, res) => {
     if (response.data.data.status === "success") {
       return res.status(200).json({
         status: true,
-        message: "Transaction verified successfully",
+        message: "Transaction verified",
         data: response.data.data,
       });
     }
 
     return res.status(400).json({
       status: false,
-      message: "Transaction verification failed",
+      message: "Payment verification failed",
     });
 
   } catch (error) {
-    console.error("Verification error:", error.response?.data || error.message);
+    console.error("Verify error:", error.response?.data || error.message);
     return res.status(500).json({
       status: false,
-      message: "Error verifying transaction",
+      message: "Verification failed",
       error: error.message
     });
   }
@@ -154,7 +152,7 @@ app.post("/webhook", async (req, res) => {
     const signature = req.headers["x-paystack-signature"];
     
     if (!validateWebhook(signature, req.rawBody)) {
-      console.warn("Invalid webhook signature");
+      console.warn("Invalid signature");
       return res.sendStatus(403);
     }
 
@@ -162,11 +160,12 @@ app.post("/webhook", async (req, res) => {
     
     if (event.event === "charge.success") {
       const reference = event.data.reference;
-      console.log(`Processing successful payment: ${reference}`);
+      console.log(`Processing payment: ${reference}`);
       await updateUserSubscription(reference);
     }
 
     res.sendStatus(200);
+
   } catch (error) {
     console.error("Webhook error:", error);
     res.status(400).json({
@@ -177,7 +176,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // ======================
-// Server Start
+// Server Configuration
 // ======================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {

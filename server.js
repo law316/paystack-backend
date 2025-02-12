@@ -4,6 +4,7 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
+const bodyParser = require("body-parser"); // ✅ Ensure body-parser is used
 require("dotenv").config();
 
 // ======================
@@ -26,8 +27,8 @@ const app = express();
 // ======================
 // Middleware
 // ======================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.json()); // ✅ Ensure JSON parsing
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 
 const apiLimiter = rateLimit({
@@ -37,6 +38,9 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(apiLimiter);
+
+// ✅ Webhook must parse raw body separately
+app.use("/webhook", express.raw({ type: "application/json" }));
 
 // ======================
 // Helper Functions
@@ -154,15 +158,15 @@ app.post("/verify-transaction", async (req, res) => {
 });
 
 // 📌 Webhook for Automatic Updates
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"];
-    if (!validateWebhook(signature, req.rawBody)) {
+    if (!signature || !validateWebhook(signature, req.body)) {
       console.warn("Invalid webhook signature");
       return res.sendStatus(403);
     }
 
-    const event = JSON.parse(req.rawBody);
+    const event = JSON.parse(req.body.toString()); // ✅ Fix: Ensure JSON parsing
     
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;

@@ -4,33 +4,42 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
-const bodyParser = require("body-parser"); // ✅ Ensure body-parser is used
+const bodyParser = require("body-parser");
 require("dotenv").config();
 
 // ======================
 // Initialize Firebase
 // ======================
 if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: process.env.FIREBASE_DB_URL
-  });
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: process.env.FIREBASE_DB_URL,
+    });
+
+    console.log("✅ Firebase initialized successfully");
+  } catch (error) {
+    console.error("🚨 Firebase initialization failed:", error);
+    process.exit(1); // Stop the app if Firebase setup fails
+  }
 }
 
 // ======================
 // Initialize Express
 // ======================
 const app = express();
+app.set("trust proxy", 1); // ✅ Fix: Required for Render to handle `X-Forwarded-For` properly
 
 // ======================
 // Middleware
 // ======================
-app.use(bodyParser.json()); // ✅ Ensure JSON parsing
+app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 
+// ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -75,13 +84,13 @@ const updateUserSubscription = async (reference, email) => {
       isPremium: true,
       subscriptionStart: new Date().toISOString(),
       subscriptionEnd: subscriptionEnd.toISOString(),
-      lastPaymentReference: reference
+      lastPaymentReference: reference,
     });
     
-    console.log(`Updated subscription for ${email}`);
+    console.log(`✅ Subscription updated for ${email}`);
     return true;
   } catch (error) {
-    console.error("Firebase update error:", error);
+    console.error("🚨 Firebase update error:", error);
     return false;
   }
 };
@@ -107,7 +116,7 @@ app.post("/create-access-code", async (req, res) => {
       {
         email,
         amount: amountInKobo,
-        callback_url: `${process.env.BASE_URL}/verify-payment`
+        callback_url: `${process.env.BASE_URL}/verify-payment`,
       },
       {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
@@ -118,12 +127,12 @@ app.post("/create-access-code", async (req, res) => {
       status: true,
       data: {
         authorization_url: response.data.data.authorization_url,
-        reference: response.data.data.reference
-      }
+        reference: response.data.data.reference,
+      },
     });
 
   } catch (error) {
-    console.error("Payment error:", error.response?.data || error.message);
+    console.error("🚨 Payment error:", error.response?.data || error.message);
     res.status(500).json({ status: false, message: "Payment initialization failed" });
   }
 });
@@ -139,7 +148,6 @@ app.post("/verify-transaction", async (req, res) => {
 
     console.log(`🔍 Verifying transaction: ${reference} for ${email}`);
 
-    // ✅ Call Paystack's API to verify the transaction
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -149,23 +157,22 @@ app.post("/verify-transaction", async (req, res) => {
 
     console.log("🔍 Paystack Response Data:", response.data); // Debugging log
 
-    // ✅ Ensure response contains the expected structure
     if (response.data && response.data.data && response.data.data.status === "success") {
       await updateUserSubscription(reference, email);
 
       return res.json({
         status: true,
         message: "Payment verified successfully",
-        reference: reference,
-        email: email,
+        reference,
+        email,
       });
     }
 
     return res.status(400).json({
       status: false,
       message: "Payment not completed or failed",
-      reference: reference,
-      email: email,
+      reference,
+      email,
     });
 
   } catch (error) {
@@ -184,7 +191,7 @@ app.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"];
     if (!signature || !validateWebhook(signature, req.body)) {
-      console.warn("Invalid webhook signature");
+      console.warn("❌ Invalid webhook signature");
       return res.sendStatus(403);
     }
 
@@ -192,7 +199,7 @@ app.post("/webhook", async (req, res) => {
     
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
-      console.log(`Processing payment ${reference} for ${customer.email}`);
+      console.log(`🔄 Processing payment ${reference} for ${customer.email}`);
 
       const verification = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
@@ -203,13 +210,13 @@ app.post("/webhook", async (req, res) => {
 
       if (verification.data.data.status === "success") {
         await updateUserSubscription(reference, customer.email);
-        console.log(`Completed processing for ${reference}`);
+        console.log(`✅ Payment processed successfully for ${customer.email}`);
       }
     }
 
     res.sendStatus(200);
   } catch (error) {
-    console.error("Webhook error:", error);
+    console.error("🚨 Webhook error:", error);
     res.status(500).json({ status: false, message: "Webhook processing failed" });
   }
 });
@@ -219,5 +226,5 @@ app.post("/webhook", async (req, res) => {
 // ======================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

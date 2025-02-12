@@ -6,19 +6,21 @@ const crypto = require("crypto");
 const admin = require("firebase-admin");
 require("dotenv").config();
 
+// ======================
 // Initialize Firebase
+// ======================
+if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-const admin = require("firebase-admin");
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DB_URL
+  });
+}
 
-// Load Firebase credentials from environment variables
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.FIREBASE_DB_URL
-});
-
+// ======================
 // Initialize Express
+// ======================
 const app = express();
 
 // ======================

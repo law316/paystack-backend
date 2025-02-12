@@ -19,7 +19,7 @@ if (!admin.apps.length) {
       databaseURL: process.env.FIREBASE_DB_URL,
     });
 
-    console.log("✅ Firebase initialized successfully");
+    console.log("✅ Firebase initialized successfully.");
   } catch (error) {
     console.error("🚨 Firebase initialization failed:", error);
     process.exit(1); // Stop the app if Firebase setup fails
@@ -30,7 +30,7 @@ if (!admin.apps.length) {
 // Initialize Express
 // ======================
 const app = express();
-app.set("trust proxy", 1); // ✅ Fix: Required for Render to handle `X-Forwarded-For` properly
+app.set("trust proxy", 1); // ✅ Fix: Required for Render
 
 // ======================
 // Middleware
@@ -41,7 +41,7 @@ app.use(cors());
 
 // ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
@@ -70,23 +70,23 @@ const updateUserSubscription = async (reference, email) => {
   try {
     const db = admin.database();
     const usersRef = db.ref("users");
-    
+
     const snapshot = await usersRef.orderByChild("email").equalTo(email).once("value");
     const userData = snapshot.val();
     if (!userData) return false;
 
     const userId = Object.keys(userData)[0];
-    
+
     const currentDate = new Date();
     const subscriptionEnd = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
-    
+
     await usersRef.child(userId).update({
       isPremium: true,
       subscriptionStart: new Date().toISOString(),
       subscriptionEnd: subscriptionEnd.toISOString(),
       lastPaymentReference: reference,
     });
-    
+
     console.log(`✅ Subscription updated for ${email}`);
     return true;
   } catch (error) {
@@ -155,7 +155,7 @@ app.post("/verify-transaction", async (req, res) => {
       }
     );
 
-    console.log("🔍 Paystack Response Data:", response.data); // Debugging log
+    console.log("🔍 Paystack Response Data:", response.data);
 
     if (response.data && response.data.data && response.data.data.status === "success") {
       await updateUserSubscription(reference, email);
@@ -195,8 +195,9 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(403);
     }
 
-    const event = JSON.parse(req.body.toString()); // ✅ Fix: Ensure JSON parsing
-    
+    const event = JSON.parse(req.body.toString());
+    console.log("🔔 Webhook Event Received:", event);
+
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
       console.log(`🔄 Processing payment ${reference} for ${customer.email}`);

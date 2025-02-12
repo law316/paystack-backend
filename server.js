@@ -137,6 +137,9 @@ app.post("/verify-transaction", async (req, res) => {
       return res.status(400).json({ status: false, message: "Reference and email required" });
     }
 
+    console.log(`🔍 Verifying transaction: ${reference} for ${email}`);
+
+    // ✅ Call Paystack's API to verify the transaction
     const response = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
@@ -144,16 +147,35 @@ app.post("/verify-transaction", async (req, res) => {
       }
     );
 
-    if (response.data.data.status === "success") {
+    console.log("🔍 Paystack Response Data:", response.data); // Debugging log
+
+    // ✅ Ensure response contains the expected structure
+    if (response.data && response.data.data && response.data.data.status === "success") {
       await updateUserSubscription(reference, email);
-      return res.json({ status: true, message: "Payment verified successfully" });
+
+      return res.json({
+        status: true,
+        message: "Payment verified successfully",
+        reference: reference,
+        email: email,
+      });
     }
 
-    return res.status(400).json({ status: false, message: "Payment not completed" });
+    return res.status(400).json({
+      status: false,
+      message: "Payment not completed or failed",
+      reference: reference,
+      email: email,
+    });
 
   } catch (error) {
-    console.error("Verification error:", error.message);
-    res.status(500).json({ status: false, message: "Transaction verification failed" });
+    console.error("🚨 Verification error:", error.response?.data || error.message);
+
+    return res.status(500).json({
+      status: false,
+      message: "Transaction verification failed",
+      error: error.response?.data || error.message,
+    });
   }
 });
 

@@ -4,7 +4,6 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
-const bodyParser = require("body-parser");
 require("dotenv").config();
 
 // ======================
@@ -22,7 +21,7 @@ if (!admin.apps.length) {
     console.log("✅ Firebase initialized successfully.");
   } catch (error) {
     console.error("🚨 Firebase initialization failed:", error);
-    process.exit(1); // Stop the app if Firebase setup fails
+    process.exit(1);
   }
 }
 
@@ -30,14 +29,13 @@ if (!admin.apps.length) {
 // Initialize Express
 // ======================
 const app = express();
-app.set("trust proxy", 1); // ✅ Fix: Required for Render
+app.set("trust proxy", 1); // ✅ Required for Render
 
 // ======================
 // Middleware
 // ======================
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
+app.use(express.json()); // ✅ Use for general routes
 
 // ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
@@ -62,9 +60,7 @@ const validateWebhook = (receivedHash, payload) => {
   return receivedHash === expectedHash;
 };
 
-const sanitizeEmail = (email) => {
-  return email ? email.toLowerCase().trim() : null;
-};
+const sanitizeEmail = (email) => email ? email.toLowerCase().trim() : null;
 
 const updateUserSubscription = async (reference, email) => {
   try {
@@ -76,9 +72,8 @@ const updateUserSubscription = async (reference, email) => {
     if (!userData) return false;
 
     const userId = Object.keys(userData)[0];
-
-    const currentDate = new Date();
-    const subscriptionEnd = new Date(currentDate.setMonth(currentDate.getMonth() + 1));
+    const subscriptionEnd = new Date();
+    subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
 
     await usersRef.child(userId).update({
       isPremium: true,
@@ -110,7 +105,6 @@ app.post("/create-access-code", async (req, res) => {
     }
 
     const amountInKobo = amount * 100;
-
     const response = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -157,9 +151,8 @@ app.post("/verify-transaction", async (req, res) => {
 
     console.log("🔍 Paystack Response Data:", response.data);
 
-    if (response.data && response.data.data && response.data.data.status === "success") {
+    if (response.data?.data?.status === "success") {
       await updateUserSubscription(reference, email);
-
       return res.json({
         status: true,
         message: "Payment verified successfully",
@@ -177,8 +170,7 @@ app.post("/verify-transaction", async (req, res) => {
 
   } catch (error) {
     console.error("🚨 Verification error:", error.response?.data || error.message);
-
-    return res.status(500).json({
+    res.status(500).json({
       status: false,
       message: "Transaction verification failed",
       error: error.response?.data || error.message,
@@ -190,12 +182,14 @@ app.post("/verify-transaction", async (req, res) => {
 app.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"];
-    if (!signature || !validateWebhook(signature, req.body)) {
+    const rawBody = req.body.toString(); // ✅ Convert raw buffer to string
+
+    if (!signature || !validateWebhook(signature, rawBody)) {
       console.warn("❌ Invalid webhook signature");
       return res.sendStatus(403);
     }
 
-    const event = JSON.parse(req.body.toString());
+    const event = JSON.parse(rawBody);
     console.log("🔔 Webhook Event Received:", event);
 
     if (event.event === "charge.success") {

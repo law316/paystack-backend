@@ -179,23 +179,42 @@ app.post("/verify-transaction", async (req, res) => {
 });
 
 // 📌 Webhook for Automatic Updates
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
-    const signature = req.headers["x-paystack-signature"];
-    const rawBody = req.body.toString(); // ✅ Convert raw buffer to string
+    const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
+    const rawBody = req.body; // Get the raw body as a buffer
 
-    if (!signature || !validateWebhook(signature, rawBody)) {
-      console.warn("❌ Invalid webhook signature");
-      return res.sendStatus(403);
+    if (!signature) {
+      console.warn("❌ Missing webhook signature");
+      return res.sendStatus(403); // Forbidden
     }
 
+    // Compute the expected signature
+    const expectedSignature = crypto
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY) // Use your secret key
+      .update(rawBody) // Use raw body directly (buffer)
+      .digest("hex");
+
+    console.log("Received Signature:", signature);
+    console.log("Computed Signature:", expectedSignature);
+
+    // Verify the signature
+    if (signature !== expectedSignature) {
+      console.warn("❌ Invalid webhook signature");
+      return res.sendStatus(403); // Forbidden
+    }
+
+    // Parse the raw body into JSON
     const event = JSON.parse(rawBody);
+
     console.log("🔔 Webhook Event Received:", event);
 
+    // Handle the event (e.g., charge.success)
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
       console.log(`🔄 Processing payment ${reference} for ${customer.email}`);
 
+      // Verify the transaction with Paystack
       const verification = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
         {
@@ -209,9 +228,10 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    res.sendStatus(200);
+    // Acknowledge receipt of the event
+    res.sendStatus(200); // Always respond with 200 OK to prevent retries
   } catch (error) {
-    console.error("🚨 Webhook error:", error);
+    console.error("🚨 Webhook Error:", error);
     res.status(500).json({ status: false, message: "Webhook processing failed" });
   }
 });

@@ -182,7 +182,8 @@ app.post("/verify-transaction", async (req, res) => {
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = req.body; // Get the raw body as a buffer
+    const rawBody = Buffer.from(req.body); // Ensures raw body is treated as a Buffer
+    //const rawBody = req.body; // Get the raw body as a buffer
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");

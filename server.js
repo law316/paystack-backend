@@ -35,7 +35,7 @@ app.set("trust proxy", 1); // ✅ Required for Render
 // Middleware
 // ======================
 app.use(cors());
-app.use(express.json()); // ✅ General route parsing
+app.use(express.json()); // ✅ Used for normal API routes
 
 // ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
@@ -46,7 +46,7 @@ const apiLimiter = rateLimit({
 });
 app.use(apiLimiter);
 
-// ✅ Webhook route must parse raw body separately
+// ✅ Webhook route must parse raw body separately (Important Fix)
 app.use("/webhook", express.raw({ type: "application/json" }));
 
 // ======================
@@ -55,12 +55,11 @@ app.use("/webhook", express.raw({ type: "application/json" }));
 const validateWebhook = (receivedHash, rawBody) => {
   const expectedHash = crypto
     .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-    .update(rawBody) // Use raw body directly (Buffer)
+    .update(rawBody.toString("utf8")) // ✅ Convert Buffer to String before Hashing
     .digest("hex");
+
   return receivedHash === expectedHash;
 };
-
-const sanitizeEmail = (email) => (email ? email.toLowerCase().trim() : null);
 
 const updateUserSubscription = async (reference, email) => {
   try {
@@ -91,10 +90,8 @@ const updateUserSubscription = async (reference, email) => {
 };
 
 // ======================
-// Routes
+// Webhook for Automatic Updates
 // ======================
-
-// 📌 Webhook for Automatic Updates
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
@@ -108,7 +105,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     // Compute the expected signature
     const expectedSignature = crypto
       .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-      .update(rawBody) // Use raw body directly
+      .update(rawBody.toString("utf8")) // ✅ Convert Buffer to String before Hashing
       .digest("hex");
 
     console.log("Received Signature:", signature);
@@ -121,8 +118,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     }
 
     // Parse the raw body into JSON
-    const event = JSON.parse(rawBody.toString("utf8")); // Convert Buffer to string, then parse JSON
-
+    const event = JSON.parse(rawBody.toString("utf8")); // ✅ Convert Buffer to String, then parse JSON
     console.log("🔔 Webhook Event Received:", event);
 
     // Handle the event (e.g., charge.success)

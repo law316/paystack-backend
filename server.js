@@ -31,11 +31,13 @@ if (!admin.apps.length) {
 const app = express();
 app.set("trust proxy", 1); // ✅ Required for Render
 
-// ======================
-// Middleware
-// ======================
+// ✅ Webhook must parse raw body separately BEFORE global JSON middleware
+app.use("/webhook", express.raw({ type: "application/json" }));
+
+// ✅ Other middleware (AFTER webhook)
 app.use(cors());
-app.use(express.json()); // ✅ Used for normal API routes
+app.use(express.json()); // 🚨 Move this BELOW the webhook
+app.use(express.urlencoded({ extended: true }));
 
 // ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
@@ -46,56 +48,13 @@ const apiLimiter = rateLimit({
 });
 app.use(apiLimiter);
 
-// ✅ Webhook route must parse raw body separately (Important Fix)
-app.use("/webhook", express.raw({ type: "application/json" }));
-
-// ======================
-// Helper Functions
-// ======================
-const validateWebhook = (receivedHash, rawBody) => {
-  const expectedHash = crypto
-    .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-    .update(rawBody.toString("utf8")) // ✅ Convert Buffer to String before Hashing
-    .digest("hex");
-
-  return receivedHash === expectedHash;
-};
-
-const updateUserSubscription = async (reference, email) => {
-  try {
-    const db = admin.database();
-    const usersRef = db.ref("users");
-
-    const snapshot = await usersRef.orderByChild("email").equalTo(email).once("value");
-    const userData = snapshot.val();
-    if (!userData) return false;
-
-    const userId = Object.keys(userData)[0];
-    const subscriptionEnd = new Date();
-    subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1);
-
-    await usersRef.child(userId).update({
-      isPremium: true,
-      subscriptionStart: new Date().toISOString(),
-      subscriptionEnd: subscriptionEnd.toISOString(),
-      lastPaymentReference: reference,
-    });
-
-    console.log(`✅ Subscription updated for ${email}`);
-    return true;
-  } catch (error) {
-    console.error("🚨 Firebase update error:", error);
-    return false;
-  }
-};
-
 // ======================
 // Webhook for Automatic Updates
 // ======================
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = req.body; // Must be a Buffer
+    const rawBody = req.body; // `express.raw()` ensures this is a Buffer
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");

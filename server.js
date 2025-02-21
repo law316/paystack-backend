@@ -35,7 +35,7 @@ app.set("trust proxy", 1); // ✅ Required for Render
 // Middleware
 // ======================
 app.use(cors());
-app.use(express.json()); // ✅ Use for general routes
+app.use(express.json()); // ✅ General route parsing
 
 // ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
@@ -46,21 +46,21 @@ const apiLimiter = rateLimit({
 });
 app.use(apiLimiter);
 
-// ✅ Webhook must parse raw body separately
+// ✅ Webhook route must parse raw body separately
 app.use("/webhook", express.raw({ type: "application/json" }));
 
 // ======================
 // Helper Functions
 // ======================
-const validateWebhook = (receivedHash, payload) => {
+const validateWebhook = (receivedHash, rawBody) => {
   const expectedHash = crypto
     .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-    .update(payload)
+    .update(rawBody) // Use raw body directly (Buffer)
     .digest("hex");
   return receivedHash === expectedHash;
 };
 
-const sanitizeEmail = (email) => email ? email.toLowerCase().trim() : null;
+const sanitizeEmail = (email) => (email ? email.toLowerCase().trim() : null);
 
 const updateUserSubscription = async (reference, email) => {
   try {
@@ -94,96 +94,11 @@ const updateUserSubscription = async (reference, email) => {
 // Routes
 // ======================
 
-// 📌 Create Payment Link
-app.post("/create-access-code", async (req, res) => {
-  try {
-    const { email: rawEmail, amount } = req.body;
-    const email = sanitizeEmail(rawEmail);
-
-    if (!email || !amount || typeof amount !== "number" || amount <= 0) {
-      return res.status(400).json({ status: false, message: "Valid email and positive amount required" });
-    }
-
-    const amountInKobo = amount * 100;
-    const response = await axios.post(
-      "https://api.paystack.co/transaction/initialize",
-      {
-        email,
-        amount: amountInKobo,
-        callback_url: `${process.env.BASE_URL}/verify-payment`,
-      },
-      {
-        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
-      }
-    );
-
-    res.status(200).json({
-      status: true,
-      data: {
-        authorization_url: response.data.data.authorization_url,
-        reference: response.data.data.reference,
-      },
-    });
-
-  } catch (error) {
-    console.error("🚨 Payment error:", error.response?.data || error.message);
-    res.status(500).json({ status: false, message: "Payment initialization failed" });
-  }
-});
-
-// 📌 Verify Payment After Completion
-app.post("/verify-transaction", async (req, res) => {
-  try {
-    const { reference, email } = req.body;
-
-    if (!reference || !email) {
-      return res.status(400).json({ status: false, message: "Reference and email required" });
-    }
-
-    console.log(`🔍 Verifying transaction: ${reference} for ${email}`);
-
-    const response = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
-      }
-    );
-
-    console.log("🔍 Paystack Response Data:", response.data);
-
-    if (response.data?.data?.status === "success") {
-      await updateUserSubscription(reference, email);
-      return res.json({
-        status: true,
-        message: "Payment verified successfully",
-        reference,
-        email,
-      });
-    }
-
-    return res.status(400).json({
-      status: false,
-      message: "Payment not completed or failed",
-      reference,
-      email,
-    });
-
-  } catch (error) {
-    console.error("🚨 Verification error:", error.response?.data || error.message);
-    res.status(500).json({
-      status: false,
-      message: "Transaction verification failed",
-      error: error.response?.data || error.message,
-    });
-  }
-});
-
 // 📌 Webhook for Automatic Updates
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = Buffer.from(req.body); // Ensures raw body is treated as a Buffer
-    //const rawBody = req.body; // Get the raw body as a buffer
+    const rawBody = req.body; // `express.raw()` provides the raw body as a Buffer
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");
@@ -192,8 +107,8 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
 
     // Compute the expected signature
     const expectedSignature = crypto
-      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY) // Use your secret key
-      .update(rawBody) // Use raw body directly (buffer)
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
+      .update(rawBody) // Use raw body directly
       .digest("hex");
 
     console.log("Received Signature:", signature);
@@ -206,7 +121,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     }
 
     // Parse the raw body into JSON
-    const event = JSON.parse(rawBody);
+    const event = JSON.parse(rawBody.toString("utf8")); // Convert Buffer to string, then parse JSON
 
     console.log("🔔 Webhook Event Received:", event);
 

@@ -95,17 +95,17 @@ const updateUserSubscription = async (reference, email) => {
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = req.body; // `express.raw()` provides the raw body as a Buffer
+    const rawBody = req.body; // Must be a Buffer (not parsed!)
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");
       return res.sendStatus(403); // Forbidden
     }
 
-    // Compute the expected signature
+    // Compute the expected signature using raw body
     const expectedSignature = crypto
-      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-      .update(rawBody.toString("utf8")) // ✅ Convert Buffer to String before Hashing
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY) // Must be the exact secret key
+      .update(rawBody) // Directly use the raw body (Buffer)
       .digest("hex");
 
     console.log("Received Signature:", signature);
@@ -117,8 +117,8 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       return res.sendStatus(403); // Forbidden
     }
 
-    // Parse the raw body into JSON
-    const event = JSON.parse(rawBody.toString("utf8")); // ✅ Convert Buffer to String, then parse JSON
+    // ✅ If signature is valid, parse the raw body into JSON
+    const event = JSON.parse(rawBody.toString("utf8"));
     console.log("🔔 Webhook Event Received:", event);
 
     // Handle the event (e.g., charge.success)

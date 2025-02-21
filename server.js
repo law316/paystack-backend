@@ -51,7 +51,7 @@ app.use(apiLimiter);
 // ======================
 // Webhook for Automatic Updates
 // ======================
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
     const rawBody = req.body; // `express.raw()` ensures this is a Buffer
@@ -63,14 +63,14 @@ app.post("/webhook", async (req, res) => {
 
     // ✅ Ensure rawBody is a Buffer before hashing
     if (!(rawBody instanceof Buffer)) {
-      console.error("🚨 Error: rawBody is NOT a Buffer!", typeof rawBody);
+      console.error("🚨 rawBody is NOT a Buffer!", typeof rawBody);
       return res.status(400).json({ status: false, message: "Invalid request body format" });
     }
 
     // ✅ Compute the expected signature
     const expectedSignature = crypto
       .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-      .update(rawBody) // ✅ Use raw body directly (Buffer)
+      .update(rawBody) // Use raw body directly (Buffer)
       .digest("hex");
 
     console.log("Received Signature:", signature);

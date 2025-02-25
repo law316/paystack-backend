@@ -103,10 +103,71 @@ app.post("/webhook", (req, res) => {
 // ======================
 // Create Access Code Route
 // ======================
+app.post("/webhook", (req, res) => {
+  try {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
+    const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
+    const rawBody = req.body; // Use the raw body captured by express.raw()
+
+    if (!signature) {
+      console.error("❌ Missing webhook signature");
+      return res.status(403).send("Forbidden: Missing signature");
+    }
+
+    // Compute the expected signature using the raw body
+    const expectedSignature = crypto
+      .createHmac("sha512", secretKey)
+      .update(rawBody)
+      .digest("hex");
+
+    if (signature !== expectedSignature) {
+      console.error("❌ Invalid webhook signature");
+      return res.status(403).send("Forbidden: Invalid signature");
+    }
+
+    // Parse the raw body into JSON AFTER validating the signature
+    const event = JSON.parse(rawBody.toString("utf8"));
+
+    console.log("✅ Webhook Event Received:", event);
+
+    // Handle Paystack events (e.g., charge.success)
+    if (event.event === "charge.success") {
+      const { reference, customer, data } = event.data;
+
+      // Example: Perform subscription activation logic here
+      console.log(
+        `✅ Payment verified for ${customer.email} with reference ${reference}`
+      );
+
+      // Activate subscription or update database record
+      activateSubscription(customer.email, reference, data);
+    }
+
+    // Respond with 200 to acknowledge receipt of the webhook
+    res.status(200).send("Webhook received");
+  } catch (error) {
+    console.error("🚨 Webhook Error:", error);
+    res.status(500).send("Webhook processing failed");
+  }
+});
+
+// Example function to activate subscription
+function activateSubscription(email, reference, data) {
+  console.log(
+    `Activating subscription for ${email} with payment reference: ${reference}`
+  );
+
+  // TODO: Add your logic to activate the subscription in your database
+  // For example:
+  // - Check if the payment reference already exists (to prevent duplicate processing)
+  // - Mark the user's subscription as active
+  // - Update the user's subscription expiry date
+  // - Send a confirmation email or notification
+}
 // ======================
 // Create Access Code Route
 // ======================
-app.post("/create-access-code", async (req, res) => {
+/*app.post("/create-access-code", async (req, res) => {
   try {
     const { email, amount } = req.body;
 
@@ -149,6 +210,11 @@ app.post("/create-access-code", async (req, res) => {
     });
   }
 });
+//Example function to activate subscription
+function activateSubscription(email, reference, data) {
+  console.log(
+    `Activating subscription for ${email} with payment reference: ${reference}`
+  );*/
 
 // ======================
 // Start Server
@@ -157,3 +223,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+

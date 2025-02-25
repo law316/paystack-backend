@@ -61,37 +61,21 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       return res.sendStatus(403); // Forbidden
     }
 
-    // ✅ Ensure rawBody is a Buffer before hashing
-    if (!(rawBody instanceof Buffer)) {
-      console.error("🚨 rawBody is NOT a Buffer!", typeof rawBody);
-      return res.status(400).json({ status: false, message: "Invalid request body format" });
-    }
-
-    // ✅ Compute the expected signature
     const expectedSignature = crypto
       .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
       .update(rawBody) // Use raw body directly (Buffer)
       .digest("hex");
 
-    console.log("Received Signature:", signature);
-    console.log("Computed Signature:", expectedSignature);
-
-    // ✅ Verify the signature
     if (signature !== expectedSignature) {
       console.warn("❌ Invalid webhook signature");
       return res.sendStatus(403); // Forbidden
     }
 
-    // ✅ Convert rawBody Buffer to string and parse it as JSON
     const event = JSON.parse(rawBody.toString("utf8"));
-    console.log("🔔 Webhook Event Received:", event);
 
-    // ✅ Handle the event (e.g., charge.success)
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
-      console.log(`🔄 Processing payment ${reference} for ${customer.email}`);
 
-      // ✅ Verify the transaction with Paystack
       const verification = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
         {
@@ -101,15 +85,53 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
 
       if (verification.data.data.status === "success") {
         await updateUserSubscription(reference, customer.email);
-        console.log(`✅ Payment processed successfully for ${customer.email}`);
       }
     }
 
-    // ✅ Acknowledge receipt of the event
-    res.sendStatus(200); // Always respond with 200 OK to prevent retries
+    res.sendStatus(200);
   } catch (error) {
     console.error("🚨 Webhook Error:", error);
     res.status(500).json({ status: false, message: "Webhook processing failed" });
+  }
+});
+
+// ======================
+// Create Access Code Route
+// ======================
+app.post("/create-access-code", async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+
+    if (!email || !amount) {
+      return res.status(400).json({ status: false, message: "Email and amount are required." });
+    }
+
+    const paystackResponse = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      { email, amount },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+      }
+    );
+
+    const accessCode = paystackResponse.data.data.access_code;
+    const authorizationUrl = paystackResponse.data.data.authorization_url;
+
+    res.status(200).json({
+      status: true,
+      message: "Access code created successfully.",
+      accessCode,
+      authorizationUrl,
+    });
+  } catch (error) {
+    console.error("🚨 Error creating access code:", error.response?.data || error.message);
+    res.status(500).json({
+      status: false,
+      message: "Failed to create access code.",
+      error: error.response?.data || error.message,
+    });
   }
 });
 

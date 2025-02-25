@@ -114,9 +114,12 @@ app.post("/create-access-code", async (req, res) => {
       return res.status(400).json({ status: false, message: "Email and amount are required." });
     }
 
+    // Convert amount from Naira to Kobo
+    const amountInKobo = amount * 100;
+
     const paystackResponse = await axios.post(
       "https://api.paystack.co/transaction/initialize",
-      { email, amount },
+      { email, amount: amountInKobo }, // Send the converted amount in Kobo
       {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,

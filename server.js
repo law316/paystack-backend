@@ -103,6 +103,9 @@ app.post("/webhook", (req, res) => {
 // ======================
 // Create Access Code Route
 // ======================
+// ======================
+// Create Access Code Route
+// ======================
 app.post("/create-access-code", async (req, res) => {
   try {
     const { email, amount } = req.body;
@@ -121,14 +124,18 @@ app.post("/create-access-code", async (req, res) => {
       }
     );
 
+    // Extract the necessary fields from the Paystack response
     const accessCode = paystackResponse.data.data.access_code;
     const authorizationUrl = paystackResponse.data.data.authorization_url;
 
+    // Respond with the correct structure, wrapping the fields inside a "data" object
     res.status(200).json({
       status: true,
       message: "Access code created successfully.",
-      accessCode,
-      authorizationUrl,
+      data: {
+        accessCode: accessCode,
+        authorizationUrl: authorizationUrl,
+      },
     });
   } catch (error) {
     console.error("🚨 Error creating access code:", error.response?.data || error.message);

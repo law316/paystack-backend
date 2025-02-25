@@ -49,29 +49,33 @@ const apiLimiter = rateLimit({
 app.use(apiLimiter);
 
 // ======================
-// Webhook for Automatic Updates
+// Webhook Route
 // ======================
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
-    const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = req.body; // `express.raw()` ensures this is a Buffer
+    const signature = req.headers["x-paystack-signature"];
+    const rawBody = req.body;
+    const secret = process.env.PAYSTACK_SECRET_KEY;
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");
-      return res.sendStatus(403); // Forbidden
+      return res.status(403).send("Forbidden: Missing signature");
     }
 
     const expectedSignature = crypto
-      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
-      .update(rawBody) // Use raw body directly (Buffer)
+      .createHmac("sha512", secret)
+      .update(rawBody)
       .digest("hex");
 
     if (signature !== expectedSignature) {
-      console.warn("❌ Invalid webhook signature");
-      return res.sendStatus(403); // Forbidden
+      console.error("❌ Invalid webhook signature");
+      console.log("Expected Signature:", expectedSignature);
+      console.log("Received Signature:", signature);
+      return res.status(403).send("Forbidden: Invalid signature");
     }
 
     const event = JSON.parse(rawBody.toString("utf8"));
+    console.log("✅ Webhook Event:", event);
 
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
@@ -79,19 +83,20 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       const verification = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
         {
-          headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+          headers: { Authorization: `Bearer ${secret}` },
         }
       );
 
       if (verification.data.data.status === "success") {
+        console.log(`✅ Payment verified for ${customer.email}`);
         await updateUserSubscription(reference, customer.email);
       }
     }
 
-    res.sendStatus(200);
+    res.status(200).send("Webhook received");
   } catch (error) {
     console.error("🚨 Webhook Error:", error);
-    res.status(500).json({ status: false, message: "Webhook processing failed" });
+    res.status(500).send("Webhook processing failed");
   }
 });
 

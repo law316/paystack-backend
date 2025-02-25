@@ -51,7 +51,58 @@ app.use(apiLimiter);
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", async (req, res) => {
+const crypto = require("crypto");
+
+// Webhook Route
+app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+  try {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY; // Make sure this is correct
+    const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
+    const rawBody = req.body; // Use the raw body captured by express.raw()
+
+    if (!signature) {
+      console.error("❌ Missing webhook signature");
+      return res.status(403).send("Forbidden: Missing signature");
+    }
+
+    // Compute the expected signature using the raw body
+    const expectedSignature = crypto
+      .createHmac("sha512", secretKey)
+      .update(rawBody) // Use raw body directly
+      .digest("hex");
+
+    // Compare the signatures
+    if (signature !== expectedSignature) {
+      console.error("❌ Invalid webhook signature");
+      console.log("Expected Signature:", expectedSignature);
+      console.log("Received Signature:", signature);
+
+      // Reject the request if signatures don't match
+      return res.status(403).send("Forbidden: Invalid signature");
+    }
+
+    // Parse the raw body into JSON AFTER validating the signature
+    const event = JSON.parse(rawBody.toString("utf8"));
+
+    // Log the received event
+    console.log("✅ Webhook Event Received:", event);
+
+    // Handle Paystack events (e.g., charge.success)
+    if (event.event === "charge.success") {
+      const { reference, customer } = event.data;
+
+      // Example: Verify the transaction with Paystack
+      console.log(`✅ Payment verified for ${customer.email} with reference ${reference}`);
+    }
+
+    // Respond with 200 to acknowledge receipt of the webhook
+    res.status(200).send("Webhook received");
+  } catch (error) {
+    console.error("🚨 Webhook Error:", error);
+    res.status(500).send("Webhook processing failed");
+  }
+});
+/*app.post("/webhook", async (req, res) => {
   try {
     const secret = process.env.PAYSTACK_SECRET_KEY; // Use your Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
@@ -103,7 +154,7 @@ app.post("/webhook", async (req, res) => {
     console.error("🚨 Webhook Error:", error);
     res.status(500).send("Webhook processing failed");
   }
-});
+});*/
 
 // ======================
 // Create Access Code Route

@@ -36,7 +36,7 @@ app.use("/webhook", express.raw({ type: "application/json" }));
 
 // ✅ Other middleware (AFTER webhook)
 app.use(cors());
-app.use(express.json()); // 🚨 Move this BELOW the webhook
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ✅ Rate limiter to prevent abuse
@@ -51,17 +51,18 @@ app.use(apiLimiter);
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
-    const signature = req.headers["x-paystack-signature"];
-    const rawBody = req.body;
-    const secret = process.env.PAYSTACK_SECRET_KEY;
+    const secret = process.env.PAYSTACK_SECRET_KEY; // Use your Paystack secret key
+    const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
+    const rawBody = req.body; // Use raw body captured by express.raw()
 
     if (!signature) {
       console.warn("❌ Missing webhook signature");
       return res.status(403).send("Forbidden: Missing signature");
     }
 
+    // Compute the expected signature
     const expectedSignature = crypto
       .createHmac("sha512", secret)
       .update(rawBody)
@@ -74,12 +75,15 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       return res.status(403).send("Forbidden: Invalid signature");
     }
 
+    // Parse raw body into JSON after signature validation
     const event = JSON.parse(rawBody.toString("utf8"));
-    console.log("✅ Webhook Event:", event);
+
+    console.log("✅ Webhook Event Received:", event);
 
     if (event.event === "charge.success") {
       const { reference, customer } = event.data;
 
+      // Verify the transaction with Paystack
       const verification = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
         {
@@ -89,6 +93,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
 
       if (verification.data.data.status === "success") {
         console.log(`✅ Payment verified for ${customer.email}`);
+        // Your logic for handling successful payments
         await updateUserSubscription(reference, customer.email);
       }
     }

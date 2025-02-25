@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const rateLimit = require("express-rate-limit");
-const crypto = require("crypto");
+const crypto = require("crypto"); // Import only once at the top
 const admin = require("firebase-admin");
 require("dotenv").config();
 
@@ -51,12 +51,9 @@ app.use(apiLimiter);
 // ======================
 // Webhook Route
 // ======================
-const crypto = require("crypto");
-
-// Webhook Route
-app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/webhook", (req, res) => {
   try {
-    const secretKey = process.env.PAYSTACK_SECRET_KEY; // Make sure this is correct
+    const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
     const rawBody = req.body; // Use the raw body captured by express.raw()
 
@@ -102,59 +99,6 @@ app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
     res.status(500).send("Webhook processing failed");
   }
 });
-/*app.post("/webhook", async (req, res) => {
-  try {
-    const secret = process.env.PAYSTACK_SECRET_KEY; // Use your Paystack secret key
-    const signature = req.headers["x-paystack-signature"]; // Get the signature from headers
-    const rawBody = req.body; // Use raw body captured by express.raw()
-
-    if (!signature) {
-      console.warn("❌ Missing webhook signature");
-      return res.status(403).send("Forbidden: Missing signature");
-    }
-
-    // Compute the expected signature
-    const expectedSignature = crypto
-      .createHmac("sha512", secret)
-      .update(rawBody)
-      .digest("hex");
-
-    if (signature !== expectedSignature) {
-      console.error("❌ Invalid webhook signature");
-      console.log("Expected Signature:", expectedSignature);
-      console.log("Received Signature:", signature);
-      return res.status(403).send("Forbidden: Invalid signature");
-    }
-
-    // Parse raw body into JSON after signature validation
-    const event = JSON.parse(rawBody.toString("utf8"));
-
-    console.log("✅ Webhook Event Received:", event);
-
-    if (event.event === "charge.success") {
-      const { reference, customer } = event.data;
-
-      // Verify the transaction with Paystack
-      const verification = await axios.get(
-        `https://api.paystack.co/transaction/verify/${reference}`,
-        {
-          headers: { Authorization: `Bearer ${secret}` },
-        }
-      );
-
-      if (verification.data.data.status === "success") {
-        console.log(`✅ Payment verified for ${customer.email}`);
-        // Your logic for handling successful payments
-        await updateUserSubscription(reference, customer.email);
-      }
-    }
-
-    res.status(200).send("Webhook received");
-  } catch (error) {
-    console.error("🚨 Webhook Error:", error);
-    res.status(500).send("Webhook processing failed");
-  }
-});*/
 
 // ======================
 // Create Access Code Route

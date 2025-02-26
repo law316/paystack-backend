@@ -82,13 +82,19 @@ app.post("/webhook", async (req, res) => {
     if (event.event === "charge.success") {
       const { reference, customer, paid_at } = event.data;
 
-      // Validate `paid_at` date
-      if (!paid_at) {
-        console.error("❌ Missing `paid_at` field in the webhook event.");
-        return res.status(400).send("Invalid webhook event: Missing `paid_at` field.");
+      // Log the full `data` object for debugging purposes
+      console.log("🔍 Webhook `data` object:", event.data);
+
+      // Get the user's email
+      const email = customer?.email || null; // Safely access the email field
+
+      if (!email) {
+        console.error("❌ Missing `email` field in the webhook event.");
+        return res.status(400).send("Invalid webhook event: Missing `email` field.");
       }
 
-      const subscriptionStartDate = new Date(paid_at);
+      // Subscription details
+      const subscriptionStartDate = paid_at ? new Date(paid_at) : new Date(); // Use `paid_at` or fallback to current date
       if (isNaN(subscriptionStartDate)) {
         console.error("❌ Invalid `paid_at` date format:", paid_at);
         return res.status(400).send("Invalid webhook event: Invalid `paid_at` value.");
@@ -100,9 +106,6 @@ app.post("/webhook", async (req, res) => {
       // Format the dates as "yyyy-MM-dd"
       const formattedStartDate = subscriptionStartDate.toISOString().split("T")[0];
       const formattedEndDate = subscriptionEndDate.toISOString().split("T")[0];
-
-      // Get the user's email
-      const email = customer.email;
 
       // Find the user's UID in Firebase Authentication
       const userList = await admin.auth().listUsers();

@@ -4,7 +4,7 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const admin = require("firebase-admin");
-require("dotenv").config();
+require("dotenv").config(); // Load environment variables from .env file
 
 // ======================
 // Initialize Firebase
@@ -15,13 +15,13 @@ if (!admin.apps.length) {
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/",
+      databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/", // Ensure this URL is correct
     });
 
     console.log("✅ Firebase initialized successfully.");
   } catch (error) {
     console.error("🚨 Firebase initialization failed:", error);
-    process.exit(1);
+    process.exit(1); // Exit the app if Firebase initialization fails
   }
 }
 
@@ -31,17 +31,17 @@ if (!admin.apps.length) {
 const app = express();
 app.set("trust proxy", 1); // Required for Render
 
-app.use("/webhook", express.raw({ type: "application/json" }));
+app.use("/webhook", express.raw({ type: "application/json" })); // Raw body for Paystack webhook
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiter
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable `X-RateLimit-*` headers
 });
 app.use(apiLimiter);
 
@@ -54,6 +54,7 @@ app.post("/webhook", async (req, res) => {
     const signature = req.headers["x-paystack-signature"];
     const rawBody = req.body;
 
+    // Verify the webhook signature
     if (!signature) {
       return res.status(403).send("Forbidden: Missing signature");
     }
@@ -78,6 +79,7 @@ app.post("/webhook", async (req, res) => {
         return res.status(400).send("Invalid webhook: Missing email.");
       }
 
+      // Handle subscription logic
       const subscriptionStartDate = paid_at ? new Date(paid_at) : new Date();
       const subscriptionEndDate = new Date(subscriptionStartDate);
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
@@ -85,6 +87,7 @@ app.post("/webhook", async (req, res) => {
       const formattedStartDate = subscriptionStartDate.toISOString().split("T")[0];
       const formattedEndDate = subscriptionEndDate.toISOString().split("T")[0];
 
+      // Find user by email in Firebase Authentication
       const userList = await admin.auth().listUsers();
       const user = userList.users.find((u) => u.email === email);
 
@@ -93,7 +96,7 @@ app.post("/webhook", async (req, res) => {
       }
 
       const userUID = user.uid;
-      const userRef = admin.database().ref(`users/${userUID}`);
+      const userRef = admin.database().ref(`users/${userUID}`); // Realtime Database reference
       await userRef.update({
         isFreeUser: false,
         premiumMonths: 1,

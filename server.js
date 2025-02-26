@@ -95,7 +95,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
   try {
     const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
-    const rawBody = req.body; // Use the raw body captured by express.raw()
+    const rawBody = req.body; // Raw body captured by express.raw()
 
     if (!signature) {
       console.error("❌ Missing webhook signature");

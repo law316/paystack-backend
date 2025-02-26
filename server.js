@@ -82,17 +82,27 @@ app.post("/webhook", async (req, res) => {
     if (event.event === "charge.success") {
       const { reference, customer, paid_at } = event.data;
 
-      // Get the user's email
-      const email = customer.email;
+      // Validate `paid_at` date
+      if (!paid_at) {
+        console.error("❌ Missing `paid_at` field in the webhook event.");
+        return res.status(400).send("Invalid webhook event: Missing `paid_at` field.");
+      }
 
-      // Subscription details
       const subscriptionStartDate = new Date(paid_at);
+      if (isNaN(subscriptionStartDate)) {
+        console.error("❌ Invalid `paid_at` date format:", paid_at);
+        return res.status(400).send("Invalid webhook event: Invalid `paid_at` value.");
+      }
+
       const subscriptionEndDate = new Date(subscriptionStartDate);
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1); // Add 1 month for now (adjust as needed)
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1); // Add 1 month
 
       // Format the dates as "yyyy-MM-dd"
       const formattedStartDate = subscriptionStartDate.toISOString().split("T")[0];
       const formattedEndDate = subscriptionEndDate.toISOString().split("T")[0];
+
+      // Get the user's email
+      const email = customer.email;
 
       // Find the user's UID in Firebase Authentication
       const userList = await admin.auth().listUsers();
@@ -125,7 +135,6 @@ app.post("/webhook", async (req, res) => {
     res.status(500).send("Webhook processing failed");
   }
 });
-
 // ======================
 // Create Access Code Route
 // ======================

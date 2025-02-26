@@ -11,19 +11,17 @@ require("dotenv").config(); // Load environment variables from .env file
 // ======================
 if (!admin.apps.length) {
   try {
-    // Parse the service account key from the environment variable
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-    // Initialize Firebase Admin SDK
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/", // Ensure this URL is correct
+      databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/",
     });
 
     console.log("✅ Firebase initialized successfully.");
   } catch (error) {
     console.error("🚨 Firebase initialization failed:", error);
-    process.exit(1); // Exit the app if Firebase initialization fails
+    process.exit(1);
   }
 }
 
@@ -33,7 +31,6 @@ if (!admin.apps.length) {
 const app = express();
 app.set("trust proxy", 1); // Required for Render
 
-app.use("/webhook", express.raw({ type: "application/json" })); // Raw body for Paystack webhook
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -42,10 +39,53 @@ app.use(express.urlencoded({ extended: true }));
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per window
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use(apiLimiter);
+
+// ======================
+// /create-access-code Route
+// ======================
+app.post("/create-access-code", async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+
+    // Validate inputs
+    if (!email || !amount) {
+      return res.status(400).json({ error: "Email and amount are required." });
+    }
+
+    // Make a request to Paystack to create an access code
+    const response = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email,
+        amount: amount * 100, // Convert to kobo (Paystack expects amount in kobo)
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, // Use Paystack secret key
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Return the access code and other details to the client
+    const { data } = response;
+    return res.status(200).json({
+      status: "success",
+      access_code: data.data.access_code,
+      authorization_url: data.data.authorization_url,
+      reference: data.data.reference,
+    });
+  } catch (error) {
+    console.error("🚨 Error creating access code:", error.response?.data || error.message);
+    return res.status(500).json({
+      error: "Failed to create access code. Please try again later.",
+    });
+  }
+});
 
 // ======================
 // Webhook Route
@@ -98,7 +138,7 @@ app.post("/webhook", async (req, res) => {
       }
 
       const userUID = user.uid;
-      const userRef = admin.database().ref(`users/${userUID}`); // Realtime Database reference
+      const userRef = admin.database().ref(`users/${userUID}`);
       await userRef.update({
         isFreeUser: false,
         premiumMonths: 1,

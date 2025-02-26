@@ -91,7 +91,7 @@ app.post("/create-access-code", async (req, res) => {
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
@@ -115,7 +115,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     // Parse the raw body into JSON AFTER validating the signature
-    const event = JSON.parse(rawBody.toString("utf8"));
+    const event = JSON.parse(rawBody);
 
     console.log("✅ Webhook Event Received:", event);
 
@@ -178,7 +178,6 @@ app.post("/webhook", async (req, res) => {
     res.status(500).send("Webhook processing failed");
   }
 });
-
 
 // ======================
 // Start Server

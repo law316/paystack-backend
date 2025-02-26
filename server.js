@@ -51,7 +51,7 @@ app.use(apiLimiter);
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
@@ -71,25 +71,51 @@ app.post("/webhook", (req, res) => {
     // Compare the signatures
     if (signature !== expectedSignature) {
       console.error("❌ Invalid webhook signature");
-      console.log("Expected Signature:", expectedSignature);
-      console.log("Received Signature:", signature);
-
-      // Reject the request if signatures don't match
       return res.status(403).send("Forbidden: Invalid signature");
     }
 
     // Parse the raw body into JSON AFTER validating the signature
     const event = JSON.parse(rawBody.toString("utf8"));
 
-    // Log the received event
     console.log("✅ Webhook Event Received:", event);
 
-    // Handle Paystack events (e.g., charge.success)
     if (event.event === "charge.success") {
-      const { reference, customer } = event.data;
+      const { reference, customer, paid_at } = event.data;
 
-      // Example: Verify the transaction with Paystack
-      console.log(`✅ Payment verified for ${customer.email} with reference ${reference}`);
+      // Get the user's email
+      const email = customer.email;
+
+      // Subscription details
+      const subscriptionStartDate = new Date(paid_at);
+      const subscriptionEndDate = new Date(subscriptionStartDate);
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1); // Add 1 month for now (adjust as needed)
+
+      // Format the dates as "yyyy-MM-dd"
+      const formattedStartDate = subscriptionStartDate.toISOString().split("T")[0];
+      const formattedEndDate = subscriptionEndDate.toISOString().split("T")[0];
+
+      // Find the user's UID in Firebase Authentication
+      const userList = await admin.auth().listUsers();
+      const user = userList.users.find((u) => u.email === email);
+
+      if (!user) {
+        console.error(`❌ User with email ${email} not found in Firebase Authentication.`);
+        return res.status(404).send("User not found");
+      }
+
+      const userUID = user.uid; // Get the user's UID
+
+      // Update the user's subscription details in the Realtime Database
+      const userRef = admin.database().ref(`users/${userUID}`);
+      await userRef.update({
+        isFreeUser: false,
+        premiumMonths: 1, // Increment number of months based on your logic
+        subscription: "Premium",
+        subscriptionStartDate: formattedStartDate,
+        subscriptionEndDate: formattedEndDate,
+      });
+
+      console.log(`✅ Subscription updated for ${email}: ${formattedStartDate} to ${formattedEndDate}`);
     }
 
     // Respond with 200 to acknowledge receipt of the webhook

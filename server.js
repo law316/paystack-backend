@@ -31,9 +31,10 @@ if (!admin.apps.length) {
 const app = express();
 app.set("trust proxy", 1); // Required for Render
 
+// Middleware configuration
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json()); // Parse JSON for all routes except /webhook
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded data
 
 // Rate limiter
 const apiLimiter = rateLimit({
@@ -90,11 +91,11 @@ app.post("/create-access-code", async (req, res) => {
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", async (req, res) => {
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
     const signature = req.headers["x-paystack-signature"];
-    const rawBody = req.body;
+    const rawBody = req.body; // Raw body is used here
 
     // Verify the webhook signature
     if (!signature) {
@@ -103,7 +104,7 @@ app.post("/webhook", async (req, res) => {
 
     const expectedSignature = crypto
       .createHmac("sha512", secretKey)
-      .update(rawBody)
+      .update(rawBody) // Use rawBody here for accurate signature verification
       .digest("hex");
 
     if (signature !== expectedSignature) {

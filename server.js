@@ -11,8 +11,10 @@ require("dotenv").config(); // Load environment variables from .env file
 // ======================
 if (!admin.apps.length) {
   try {
-    const serviceAccount = require("./path-to-serviceAccountKey.json");
+    // Parse the service account key from the environment variable
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
+    // Initialize Firebase Admin SDK
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/", // Ensure this URL is correct

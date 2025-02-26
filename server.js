@@ -2,9 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const rateLimit = require("express-rate-limit");
-const crypto = require("crypto");
+const crypto = require("crypto"); // Import only once at the top
 const admin = require("firebase-admin");
-require("dotenv").config(); // Load environment variables from .env file
+require("dotenv").config();
 
 // ======================
 // Initialize Firebase
@@ -15,7 +15,7 @@ if (!admin.apps.length) {
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: process.env.FIREBASE_DB_URL || "https://uyomeet-default-rtdb.firebaseio.com/",
+      databaseURL: process.env.FIREBASE_DB_URL,
     });
 
     console.log("✅ Firebase initialized successfully.");
@@ -29,73 +29,33 @@ if (!admin.apps.length) {
 // Initialize Express
 // ======================
 const app = express();
-app.set("trust proxy", 1); // Required for Render
+app.set("trust proxy", 1); // ✅ Required for Render
 
-// Middleware configuration
+// ✅ Webhook must parse raw body separately BEFORE global JSON middleware
+app.use("/webhook", express.raw({ type: "application/json" }));
+
+// ✅ Other middleware (AFTER webhook)
 app.use(cors());
-app.use(express.json()); // Parse JSON for all routes except /webhook
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Rate limiter
+// ✅ Rate limiter to prevent abuse
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
 });
 app.use(apiLimiter);
 
 // ======================
-// /create-access-code Route
-// ======================
-app.post("/create-access-code", async (req, res) => {
-  try {
-    const { email, amount } = req.body;
-
-    // Validate inputs
-    if (!email || !amount) {
-      return res.status(400).json({ error: "Email and amount are required." });
-    }
-
-    // Make a request to Paystack to create an access code
-    const response = await axios.post(
-      "https://api.paystack.co/transaction/initialize",
-      {
-        email,
-        amount: amount * 100, // Convert to kobo (Paystack expects amount in kobo)
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, // Use Paystack secret key
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    // Return the access code and other details to the client
-    const { data } = response;
-    return res.status(200).json({
-      status: "success",
-      access_code: data.data.access_code,
-      authorization_url: data.data.authorization_url,
-      reference: data.data.reference,
-    });
-  } catch (error) {
-    console.error("🚨 Error creating access code:", error.response?.data || error.message);
-    return res.status(500).json({
-      error: "Failed to create access code. Please try again later.",
-    });
-  }
-});
-
-// ======================
 // Webhook Route
 // ======================
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
     const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
-    const rawBody = req.body; // Raw body captured by express.raw()
+    const rawBody = req.body; // Use the raw body captured by express.raw()
 
     if (!signature) {
       console.error("❌ Missing webhook signature");
@@ -115,7 +75,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     }
 
     // Parse the raw body into JSON AFTER validating the signature
-    const event = JSON.parse(rawBody);
+    const event = JSON.parse(rawBody.toString("utf8"));
 
     console.log("✅ Webhook Event Received:", event);
 
@@ -178,6 +138,61 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     res.status(500).send("Webhook processing failed");
   }
 });
+// ======================
+// Create Access Code Route
+// ======================
+app.post("/create-access-code", async (req, res) => {
+  try {
+    const { email, amount } = req.body;
+
+    if (!email || !amount) {
+      return res.status(400).json({ status: false, message: "Email and amount are required." });
+    }
+
+    // Convert amount from Naira to Kobo
+    const amountInKobo = amount * 100;
+
+    const paystackResponse = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      { email, amount: amountInKobo }, // Send the converted amount in Kobo
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+      }
+    );
+
+    // Extract the necessary fields from the Paystack response
+    const accessCode = paystackResponse.data.data.access_code;
+    const authorizationUrl = paystackResponse.data.data.authorization_url;
+
+    // Respond with the correct structure, wrapping the fields inside a "data" object
+    res.status(200).json({
+      status: true,
+      message: "Access code created successfully.",
+      data: {
+        accessCode: accessCode,
+        authorizationUrl: authorizationUrl,
+      },
+    });
+  } catch (error) {
+    console.error("🚨 Error creating access code:", error.response?.data || error.message);
+    res.status(500).json({
+      status: false,
+      message: "Failed to create access code.",
+      error: error.response?.data || error.message,
+    });
+  }
+});
+
+// Example function to activate subscription
+function activateSubscription(email, reference, data) {
+  console.log(
+    `Activating subscription for ${email} with payment reference: ${reference}`
+  );
+
+  // Add your logic here (e.g., update the database or subscription status)
+}
 
 // ======================
 // Start Server

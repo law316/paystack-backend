@@ -91,58 +91,78 @@ app.post("/create-access-code", async (req, res) => {
 // ======================
 // Webhook Route
 // ======================
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
-    const secretKey = process.env.PAYSTACK_SECRET_KEY;
-    const signature = req.headers["x-paystack-signature"];
-    const rawBody = req.body; // Raw body is used here
+    const secretKey = process.env.PAYSTACK_SECRET_KEY; // Paystack secret key
+    const signature = req.headers["x-paystack-signature"]; // Signature from Paystack
+    const rawBody = req.body; // Use the raw body captured by express.raw()
 
-    // Verify the webhook signature
     if (!signature) {
+      console.error("❌ Missing webhook signature");
       return res.status(403).send("Forbidden: Missing signature");
     }
 
+    // Compute the expected signature using the raw body
     const expectedSignature = crypto
       .createHmac("sha512", secretKey)
-      .update(rawBody) // Use rawBody here for accurate signature verification
+      .update(rawBody) // Use raw body directly
       .digest("hex");
 
+    // Compare the signatures
     if (signature !== expectedSignature) {
+      console.error("❌ Invalid webhook signature");
       return res.status(403).send("Forbidden: Invalid signature");
     }
 
+    // Parse the raw body into JSON AFTER validating the signature
     const event = JSON.parse(rawBody.toString("utf8"));
+
     console.log("✅ Webhook Event Received:", event);
 
     if (event.event === "charge.success") {
       const { reference, customer, paid_at } = event.data;
-      const email = customer?.email;
+
+      // Log the full `data` object for debugging purposes
+      console.log("🔍 Webhook `data` object:", event.data);
+
+      // Get the user's email
+      const email = customer?.email || null; // Safely access the email field
 
       if (!email) {
-        return res.status(400).send("Invalid webhook: Missing email.");
+        console.error("❌ Missing `email` field in the webhook event.");
+        return res.status(400).send("Invalid webhook event: Missing `email` field.");
       }
 
-      // Handle subscription logic
-      const subscriptionStartDate = paid_at ? new Date(paid_at) : new Date();
-      const subscriptionEndDate = new Date(subscriptionStartDate);
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+      // Subscription details
+      const subscriptionStartDate = paid_at ? new Date(paid_at) : new Date(); // Use `paid_at` or fallback to current date
+      if (isNaN(subscriptionStartDate)) {
+        console.error("❌ Invalid `paid_at` date format:", paid_at);
+        return res.status(400).send("Invalid webhook event: Invalid `paid_at` value.");
+      }
 
+      const subscriptionEndDate = new Date(subscriptionStartDate);
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1); // Add 1 month
+
+      // Format the dates as "yyyy-MM-dd"
       const formattedStartDate = subscriptionStartDate.toISOString().split("T")[0];
       const formattedEndDate = subscriptionEndDate.toISOString().split("T")[0];
 
-      // Find user by email in Firebase Authentication
+      // Find the user's UID in Firebase Authentication
       const userList = await admin.auth().listUsers();
       const user = userList.users.find((u) => u.email === email);
 
       if (!user) {
-        return res.status(404).send("User not found.");
+        console.error(`❌ User with email ${email} not found in Firebase Authentication.`);
+        return res.status(404).send("User not found");
       }
 
-      const userUID = user.uid;
+      const userUID = user.uid; // Get the user's UID
+
+      // Update the user's subscription details in the Realtime Database
       const userRef = admin.database().ref(`users/${userUID}`);
       await userRef.update({
         isFreeUser: false,
-        premiumMonths: 1,
+        premiumMonths: 1, // Increment number of months based on your logic
         subscription: "Premium",
         subscriptionStartDate: formattedStartDate,
         subscriptionEndDate: formattedEndDate,
@@ -151,12 +171,14 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
       console.log(`✅ Subscription updated for ${email}: ${formattedStartDate} to ${formattedEndDate}`);
     }
 
+    // Respond with 200 to acknowledge receipt of the webhook
     res.status(200).send("Webhook received");
   } catch (error) {
     console.error("🚨 Webhook Error:", error);
     res.status(500).send("Webhook processing failed");
   }
 });
+
 
 // ======================
 // Start Server
